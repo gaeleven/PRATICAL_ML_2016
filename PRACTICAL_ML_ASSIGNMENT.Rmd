@@ -1,0 +1,209 @@
+---
+title: "PRACTICAL_ML_2016"
+output: html_document
+autor: Gael Even
+date : 28-01-2016
+---
+
+This is a project on predict the manner in which people did the exercise .
+
+Load the packages and datasets
+
+```{r load}
+library(caret)
+
+setwd("~/2016/COURSERA/PRACTIAL_ML/")
+
+training <- read.table("pml-training.csv",sep=",", header=T)
+
+testing <- read.table("pml-testing.csv",sep=",",header=T)
+
+colnames(testing)[length(testing)] <- "classe"
+data_merged <- rbind.data.frame(training, testing)
+
+```
+
+Set the seed - useful for reproductible research
+
+```{r seed}
+set.seed(1225)
+```
+
+Dimension of the training dataset
+
+```{r dim training}
+dim(data_merged)
+```
+
+Summarize a part of the training data
+
+```{r summary}
+summary(data_merged[,1:10])
+```
+
+We can see many columns with a lot of non-allocated variables (NAs) or empty. We should reduice the dataset removing this non-useful for predicton columns.
+
+```{r filtering}
+
+#only keep data with more than 90% of the data filled (non-empty or non-NAs)
+limit = 90 * length(data_merged$X) / 100
+data_merged_filtered = data_merged$X
+for(i in 1:length(data_merged))
+{
+    if( length(data_merged[is.na(data_merged[,i]),1]) < limit && length(data_merged[ data_merged[,i] == "",1])  < limit )
+    {
+      data_merged_filtered <- cbind.data.frame(data_merged_filtered, data_merged[,i])  
+      colnames(data_merged_filtered)[length(data_merged_filtered)] <- colnames(data_merged)[i]
+    }
+}
+
+```
+Note : the function "nearZeroVar" of caret package could do more or less the same filtering 
+
+Dimension of new filtered training set 
+
+```{r dim}
+dim(data_merged_filtered)
+```
+
+Preprocesssing with Box Cox and PCA
+
+We will transform all numerical predictors variables 
+We still have a lot of predictor. In order to reduce the model complexity we will inspect the dataset and group highly correlated predictor and transform the data into PCA components (we will keep 10 components for this assignment)
+ 
+```{r boxcox PCA}
+  #identification of correlated numerical variables
+   M <- abs(cor(data_merged_filtered[,9:60]))
+  diag(M) <- 0
+  which(M > 0.8,arr.ind=T)
+  #findCorrelation function from caret package could be use to do more or less the same thing
+  # preproc data
+  preproc <- preProcess(data_merged_filtered[,9:60], method=c("BoxCox","pca"),pcaComp = 10)
+  data_merged_filtered_processed <- predict(preproc, data_merged_filtered[,9:60])
+  #build the new training dataset
+  #data_merged_OK <- cbind.data.frame(data_merged_filtered[,1:8], data_merged_filtered_processed, data_merged_filtered$classe)
+  data_merged_OK <- cbind.data.frame( data_merged_filtered[,c(3,4,5,8)],data_merged_filtered_processed[1:10], data_merged_filtered$classe)
+  
+#extract the testing
+  end_train <- length(data_merged_OK$PC1) - 19
+  end_test <- length(data_merged_OK$PC1)
+  training_OK <- data_merged_OK[1:end_train,]
+  testing_OK <- data_merged_OK[end_train:end_test,]
+  colnames(training_OK)[length(training_OK)] <- "classe"
+  colnames(testing_OK)[length(testing_OK)] <- "classe"
+  colnames(training_OK)[1] <- "user"
+  colnames(testing_OK)[1] <- "user"
+
+```
+
+Our dataset is ready for modelization
+
+We will try 3 algorithms :
+- Random Forest
+- Classification (RPART)
+- K-nearest-neighbor (KNN)
+
+Each model used repeated 10-fold cross-validation and is specified with the trainControl function.
+
+**RANDOM FOREST**
+
+```{r rf model}
+
+controlObject <- trainControl(method = "repeatedcv", repeats = 5, number = 10)
+
+#modFitKNN <- train(classe ~ ., method="knn", trControl = controlObject, data=training_OK)
+#modFitRF <- train(classe ~ ., method="rf", trControl = controlObject, data=training_OK)
+load("RF.model")
+
+predRF = predict(modFitRF , training_OK) 
+
+predRFTest <- predict(modFitRF, testing_OK)
+
+
+```
+Running times 
+
+```{r rf time}
+print(modFitRF$times$everything)
+```
+
+We answer correctly to the quiz on test prediction so we can predict on test dataset (I do not print the R code for predTrue variable declaration ;))
+
+```{r pred true, echo = F}
+#
+predTrue <- c("B","A","B","A","A","E","D","B","A","A","B","C","B","A","E","E","A","B","B","B")
+#pred = predict(modelRF , testData) 
+```
+
+```{r rf model result}
+print(modFitRF)
+```
+
+Accuracy for training data is very high
+
+```{r rf model plot}
+plot(modFitRF)
+```
+
+```{r rf table}
+table(training_OK$classe, predRF)
+```
+
+```{r rf table test}
+table(predTrue, predRFTest)
+```
+
+100% true positive, Random Forest is the best one!
+
+**RPART**
+
+```{r rpart model}
+#modFitRPART <- train(classe ~ ., method="rpart", trControl = controlObject, data=training_OK)
+load("RPART.model")
+predRPART = predict(modFitRPART , training_OK) 
+predRPARTTest <- predict(modFitRPART, testing_OK)
+```
+
+```
+Running times 
+
+```{r rpart time}
+print(modFitRPART$times$everything)
+```
+
+```{r rpart table}
+table(training_OK$classe, predRPART)
+```
+
+```{r rpart table test}
+table(predTrue, predRPARTTest)
+```
+
+**K-nearest-neighbor**
+```{r knn model}
+#modFitRPART <- train(classe ~ ., method="rpart", trControl = controlObject, data=training_OK)
+load("KNN.model")
+predKNN = predict(modFitKNN , training_OK) 
+predKNNTest <- predict(modFitKNN, testing_OK)
+```
+
+```
+Running times 
+
+```{r knn time}
+print(modFitKNN$times$everything)
+```
+
+```{r knn table}
+table(training_OK$classe, predKNN)
+```
+
+```{r knn table test}
+table(predTrue, predKNNTest)
+```
+
+Conclusion
+
+Even if RandomForest is the slowest Machine Learning algorithm among the three, it gives us very accurate results on this dataset.
+If we could have much times we could inspect the variable importance and see which among all the variables are the most used by the model.
+
