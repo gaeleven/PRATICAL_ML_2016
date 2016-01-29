@@ -1,2 +1,2 @@
-# PRATICAL_ML_2016
-Pratical Machine learning Assignment
+# PRAXTICAL_ML_2016
+Practical Machine learning Assignment
